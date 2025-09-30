@@ -25,8 +25,7 @@ class ClassificationLoss(nn.Module):
         Returns:
             tensor, scalar loss
         """
-        raise NotImplementedError("ClassificationLoss.forward() is not implemented")
-
+        return nn.functional.cross_entropy(logits, target)
 
 class LinearClassifier(nn.Module):
     def __init__(
@@ -42,8 +41,7 @@ class LinearClassifier(nn.Module):
             num_classes: int, number of classes
         """
         super().__init__()
-
-        raise NotImplementedError("LinearClassifier.__init__() is not implemented")
+        self.fc1 = nn.Linear(h*w*3,num_classes)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -53,8 +51,8 @@ class LinearClassifier(nn.Module):
         Returns:
             tensor (b, num_classes) logits
         """
-        raise NotImplementedError("LinearClassifier.forward() is not implemented")
-
+        x = x.view(x.size(0), -1)
+        return self.fc1(x)
 
 class MLPClassifier(nn.Module):
     def __init__(
@@ -63,27 +61,20 @@ class MLPClassifier(nn.Module):
         w: int = 64,
         num_classes: int = 6,
     ):
-        """
-        An MLP with a single hidden layer
-
-        Args:
-            h: int, height of the input image
-            w: int, width of the input image
-            num_classes: int, number of classes
-        """
         super().__init__()
-
-        raise NotImplementedError("MLPClassifier.__init__() is not implemented")
+        self.fc1 = nn.Linear(h * w * 3, 128)
+        self.fc2 = nn.Linear(128, 64)
+        self.fc3 = nn.Linear(64, 32)
+        self.fc4 = nn.Linear(32, num_classes)
+        self.relu = nn.ReLU()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
-            x: tensor (b, 3, H, W) image
-
-        Returns:
-            tensor (b, num_classes) logits
-        """
-        raise NotImplementedError("MLPClassifier.forward() is not implemented")
+        x = x.view(x.size(0), -1)   # Flatten
+        x = self.relu(self.fc1(x))  # 첫 번째 층 + ReLU
+        x = self.relu(self.fc2(x))  # 두 번째 층 + ReLU
+        x = self.relu(self.fc3(x))  # 두 번째 층 + ReLU
+        x = self.fc4(x)             # 출력층 (logits)
+        return x
 
 
 class MLPClassifierDeep(nn.Module):
@@ -92,6 +83,10 @@ class MLPClassifierDeep(nn.Module):
         h: int = 64,
         w: int = 64,
         num_classes: int = 6,
+        hidden_dim: int = 128,
+        num_layers: int = 6,
+        use_dropout: bool = False,
+        p_dropout: float = 0.2,
     ):
         """
         An MLP with multiple hidden layers
@@ -106,19 +101,32 @@ class MLPClassifierDeep(nn.Module):
             num_layers: int, number of hidden layers
         """
         super().__init__()
+        in_dim = 3 * h * w
+        layers = []
 
-        raise NotImplementedError("MLPClassifierDeep.__init__() is not implemented")
+        # 1) 입력 -> 첫 은닉층
+        layers.append(nn.Linear(in_dim, hidden_dim))
+        layers.append(nn.ReLU())
+        if use_dropout:
+            layers.append(nn.Dropout(p_dropout))
+
+        # 2) (num_layers-1)개의 은닉 블록 반복
+        for _ in range(num_layers - 1):
+            layers.append(nn.Linear(hidden_dim, hidden_dim))
+            layers.append(nn.ReLU())
+            if use_dropout:
+                layers.append(nn.Dropout(p_dropout))
+
+        # 3) 마지막 출력층 (logits)
+        layers.append(nn.Linear(hidden_dim, num_classes))
+
+        self.net = nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
-            x: tensor (b, 3, H, W) image
-
-        Returns:
-            tensor (b, num_classes) logits
-        """
-        raise NotImplementedError("MLPClassifierDeep.forward() is not implemented")
-
+        # (B, 3, H, W) -> (B, 3HW)
+        x = x.view(x.size(0), -1)
+        return self.net(x)
+        
 
 model_factory = {
     "linear": LinearClassifier,

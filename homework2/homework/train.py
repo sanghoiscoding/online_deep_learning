@@ -13,10 +13,10 @@ from .utils import load_data
 def train(
     exp_dir: str = "logs",
     model_name: str = "linear",
-    num_epoch: int = 50,
-    lr: float = 1e-3,
+    num_epoch: int = 100,
+    lr: float = 8e-4,
     batch_size: int = 128,
-    seed: int = 2024,
+    seed: int = 2025,
     **kwargs,
 ):
     if torch.cuda.is_available():
@@ -38,12 +38,12 @@ def train(
     model = model.to(device)
     model.train()
 
-    train_data = load_data("data/train", shuffle=True, batch_size=batch_size, num_workers=2)
-    val_data = load_data("data/val", shuffle=False)
+    train_data = load_data("classification_data/train", shuffle=True, batch_size=batch_size, num_workers=0)
+    val_data = load_data("classification_data/val", shuffle=False)
 
     # create loss function and optimizer
     loss_func = ClassificationLoss()
-    # optimizer = ...
+    optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9)
 
     global_step = 0
 
@@ -54,24 +54,33 @@ def train(
         for img, label in train_data:
             img, label = img.to(device), label.to(device)
 
-            # TODO: implement training step
-            raise NotImplementedError("Training step not implemented")
+            optimizer.zero_grad(set_to_none=True)
+            logits = model(img)
+            loss = loss_func(logits, label)
+            loss.backward()
+            optimizer.step()
+
+            logger.add_scalar("train_loss", loss.item(), global_step)
+            batch_acc = (logits.argmax(dim=1) == label).float().mean().item()
+            metrics["train_acc"].append(batch_acc)
 
             global_step += 1
 
         # torch.inference_mode calls model.eval() and disables gradient computation
         with torch.inference_mode():
             for img, label in val_data:
-                img, label = img.to(device), label.to(device)
-
-                # TODO: compute validation accuracy
-                raise NotImplementedError("Validation accuracy not implemented")
+              img, label = img.to(device), label.to(device)
+              logits = model(img)
+              batch_acc = (logits.argmax(dim=1) == label).float().mean().item()
+              metrics["val_acc"].append(batch_acc)
 
         # log average train and val accuracy to tensorboard
         epoch_train_acc = torch.as_tensor(metrics["train_acc"]).mean()
         epoch_val_acc = torch.as_tensor(metrics["val_acc"]).mean()
 
-        raise NotImplementedError("Logging not implemented")
+        # epoch-level 지표는 해당 epoch의 마지막 스텝에 맞춰 기록
+        logger.add_scalar("train_accuracy", epoch_train_acc, global_step - 1)
+        logger.add_scalar("val_accuracy",   epoch_val_acc,   global_step - 1)
 
         # print on first, last, every 10th epoch
         if epoch == 0 or epoch == num_epoch - 1 or (epoch + 1) % 10 == 0:
@@ -94,9 +103,9 @@ if __name__ == "__main__":
 
     parser.add_argument("--exp_dir", type=str, default="logs")
     parser.add_argument("--model_name", type=str, required=True)
-    parser.add_argument("--num_epoch", type=int, default=50)
-    parser.add_argument("--lr", type=float, default=1e-3)
-    parser.add_argument("--seed", type=int, default=2024)
+    parser.add_argument("--num_epoch", type=int, default=100)
+    parser.add_argument("--lr", type=float, default=8e-4)
+    parser.add_argument("--seed", type=int, default=2025)
 
     # optional: additional model hyperparamters
     # parser.add_argument("--num_layers", type=int, default=3)
